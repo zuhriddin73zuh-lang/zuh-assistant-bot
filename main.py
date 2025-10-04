@@ -1,116 +1,91 @@
-# -*- coding: utf-8 -*-
 import os
-import telebot
-from flask import Flask, request
+import uuid
 import requests
+from telegram import Update, InputFile
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ==========================
-# Получение токенов из переменных окружения
-# ==========================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()       # Telegram
-CHAT_API_KEY = os.getenv("CHAT_API_KEY", "").strip() # ChatGPT или другой текстовый AI
-IMAGE_API_KEY = os.getenv("IMAGE_API_KEY", "").strip() # AI генерация изображений
-VIDEO_API_KEY = os.getenv("VIDEO_API_KEY", "").strip() # AI генерация видео
+# =============================
+# Настройки и ключи
+# =============================
+BOT_TOKEN = "YOUR_BOT_TOKEN"
+CHAT_API_KEY = "YOUR_CHAT_API_KEY"
+IMAGE_API_KEY = "YOUR_IMAGE_API_KEY"
+VIDEO_API_KEY = "YOUR_VIDEO_API_KEY"
 
-# Проверка, что все токены установлены
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не установлен или содержит пробелы")
-if not CHAT_API_KEY:
-    raise ValueError("CHAT_API_KEY не установлен")
-if not IMAGE_API_KEY:
-    raise ValueError("IMAGE_API_KEY не установлен")
-if not VIDEO_API_KEY:
-    raise ValueError("VIDEO_API_KEY не установлен")
+# Временные папки для баннеров и видео
+os.makedirs("banners", exist_ok=True)
+os.makedirs("videos", exist_ok=True)
 
-# ==========================
-# Инициализация Telegram бота
-# ==========================
-bot = telebot.TeleBot(BOT_TOKEN)
-app = Flask(__name__)
+# =============================
+# Команды бота
+# =============================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Привет! Пришли промт для рекламы фасадных работ, и я сгенерирую текст, баннер и видео."
+    )
 
-# ==========================
-# Команда /start
-# ==========================
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Привет! Я Zuh Assistant Bot 🤖\nЯ могу создавать тексты, баннеры и короткие видео.")
+# =============================
+# Генерация контента
+# =============================
+async def generate_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = update.message.text
 
-# ==========================
-# Обработка текста
-# ==========================
-@bot.message_handler(func=lambda message: True)
-def handle_text(message):
-    user_text = message.text
+    # -----------------------------
+    # 1️⃣ Генерация текста через Chat API
+    # -----------------------------
+    chat_response = requests.post(
+        "https://api.render.com/v1/chat",
+        headers={"Authorization": f"Bearer {CHAT_API_KEY}"},
+        json={"prompt": f"Сделай рекламный текст поста для Facebook/Instagram: {prompt}"}
+    )
+    if chat_response.status_code == 200:
+        text_post = chat_response.json().get("text", "")
+    else:
+        text_post = "Ошибка генерации текста."
+    await update.message.reply_text(f"Текст готов:\n\n{text_post}")
 
-    # Генерация ответа через Chat API
-    chat_response = generate_chat_response(user_text)
+    # -----------------------------
+    # 2️⃣ Генерация баннера через Image API
+    # -----------------------------
+    banner_file = f"banners/{uuid.uuid4()}.png"
+    image_response = requests.post(
+        "https://api.render.com/v1/image",
+        headers={"Authorization": f"Bearer {IMAGE_API_KEY}"},
+        json={"prompt": f"Рекламный баннер фасадные работы: {prompt}. Добавь ссылку @ZuhFacadeBot", "size": "1080x1080"}
+    )
+    if image_response.status_code == 200:
+        with open(banner_file, "wb") as f:
+            f.write(image_response.content)
+        with open(banner_file, "rb") as f:
+            await update.message.reply_photo(photo=InputFile(f), caption="Баннер готов")
+    else:
+        await update.message.reply_text("Ошибка генерации баннера.")
 
-    # Генерация изображения (баннера)
-    image_url = generate_image(user_text)
+    # -----------------------------
+    # 3️⃣ Генерация видео через Video API
+    # -----------------------------
+    video_response = requests.post(
+        "https://api.render.com/v1/video",
+        headers={"Authorization": f"Bearer {VIDEO_API_KEY}"},
+        json={"prompt": f"Создай короткий рекламный ролик 10-15 секунд по промту: {prompt} с ссылкой @ZuhFacadeBot"}
+    )
+    if video_response.status_code == 200:
+        video_id = video_response.json().get("video_id")
+        video_url = f"https://api.render.com/v1/video/download/{video_id}"
+        await update.message.reply_text(f"Видео готово, скачивайте по ссылке:\n{video_url}")
+    else:
+        await update.message.reply_text("Ошибка генерации видео.")
 
-    # Генерация короткого видео
-    video_url = generate_video(user_text)
-
-    # Отправка пользователю
-    response_msg = f"Текст:\n{chat_response}\n\nБаннер: {image_url}\nВидео: {video_url}"
-    bot.reply_to(message, response_msg)
-
-# ==========================
-# Функции для генерации через API
-# ==========================
-def generate_chat_response(prompt):
-    # Пример запроса к Chat API
-    url = "https://api.openai.com/v1/chat/completions"  # или свой сервис
-    headers = {"Authorization": f"Bearer {CHAT_API_KEY}"}
-    json_data = {
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 200
-    }
-    r = requests.post(url, headers=headers, json=json_data)
-    if r.status_code == 200:
-        return r.json()["choices"][0]["message"]["content"]
-    return "Ошибка генерации текста"
-
-def generate_image(prompt):
-    # Пример запроса к Image API
-    url = "https://api.fakeimage.ai/generate"
-    headers = {"Authorization": f"Bearer {IMAGE_API_KEY}"}
-    json_data = {"prompt": prompt, "size": "512x512"}
-    r = requests.post(url, headers=headers, json=json_data)
-    if r.status_code == 200:
-        return r.json().get("url", "Нет ссылки на изображение")
-    return "Ошибка генерации изображения"
-
-def generate_video(prompt):
-    # Пример запроса к Video API
-    url = "https://api.fakevideo.ai/generate"
-    headers = {"Authorization": f"Bearer {VIDEO_API_KEY}"}
-    json_data = {"prompt": prompt, "duration": 10}
-    r = requests.post(url, headers=headers, json=json_data)
-    if r.status_code == 200:
-        return r.json().get("video_url", "Нет ссылки на видео")
-    return "Ошибка генерации видео"
-
-# ==========================
-# Вебхук для Telegram
-# ==========================
-@app.route('/' + BOT_TOKEN, methods=['POST'])
-def webhook():
-    json_str = request.stream.read().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "OK", 200
-
-@app.route('/')
-def index():
-    return "Zuh Assistant Bot работает!"
-
-# ==========================
-# Запуск сервера
-# ==========================
+# =============================
+# Запуск бота
+# =============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, generate_content))
+    print("Бот запущен и готов принимать промты...")
+    app.run_polling()
+
 
 
 
