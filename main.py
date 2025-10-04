@@ -1,36 +1,40 @@
-import os
+
 import telebot
+import os
 from flask import Flask, request
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")  # токен берём из переменной окружения
+
+# Отладка — печатаем токен, чтобы проверить пробелы
+print("TOKEN (raw):", repr(TOKEN))
+
 if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN не найден! Проверь переменные окружения на Render.")
+    raise ValueError("Переменная BOT_TOKEN не найдена! Проверь настройки в Render.")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Команда /start
+# команда /start
 @bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "✅ Бот запущен и работает!")
+def send_welcome(message):
+    bot.reply_to(message, "Привет! Я твой ассистент-бот 🤖")
 
-# Проверка сервера
+# проверка, что сервер работает
 @app.route('/')
 def index():
-    return "Бот работает!", 200
+    return "Бот работает!"
 
-# Обработка обновлений от Telegram
+# вебхук
 @app.route('/' + TOKEN, methods=['POST'])
-def webhook():
+def getMessage():
     json_str = request.stream.read().decode("utf-8")
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
     return "!", 200
 
 if __name__ == "__main__":
-    # Для Render нужен host=0.0.0.0 и порт из переменной окружения
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
+
 
 
 
