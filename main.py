@@ -1,74 +1,74 @@
-import os
+# -*- coding: utf-8 -*-
 import telebot
+import os
 from flask import Flask, request
-import requests
 
-# Токены и ключи из переменных окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_API_KEY = os.getenv("CHAT_API_KEY")
-IMAGE_API_KEY = os.getenv("IMAGE_API_KEY")
-VIDEO_API_KEY = os.getenv("VIDEO_API_KEY")
+# =========================
+# Загрузка токенов из переменных окружения
+# =========================
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+CHAT_API_KEY = os.getenv("CHAT_API_KEY", "").strip()
+IMAGE_API_KEY = os.getenv("IMAGE_API_KEY", "").strip()
+VIDEO_API_KEY = os.getenv("VIDEO_API_KEY", "").strip()
 
+# =========================
+# Проверка токена Telegram
+# =========================
+if not BOT_TOKEN:
+    raise ValueError("Ошибка: переменная окружения BOT_TOKEN пуста или содержит пробелы!")
+
+# =========================
+# Инициализация бота и сервера Flask
+# =========================
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# --- Обработка команды /start ---
+# =========================
+# Команда /start
+# =========================
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Привет! Я твой Зох-ассистент-бот. Пришли текст или голос, и я создам рекламу!")
+    bot.reply_to(
+        message, 
+        "Привет! Я Zuh, ассистент-бот 🤖\nОтправь мне текст или голосовое сообщение, и я создам рекламный контент!"
+    )
 
-# --- Обработка текстовых сообщений ---
-@bot.message_handler(content_types=['text'])
-def handle_text(message):
-    prompt = message.text
+# =========================
+# Обработка любых сообщений
+# =========================
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    text = message.text or "Голосовое сообщение"
+    # Здесь позже можно добавить генерацию контента через ChatAPI, ImageAPI, VideoAPI
+    bot.reply_to(message, f"Вы отправили: {text}\n(Здесь будет готовый рекламный контент)")
 
-    # 1️⃣ Генерация текста через ChatGPT
-    chat_response = generate_text(prompt)
-
-    # 2️⃣ Генерация баннера через Image API
-    image_url = generate_image(prompt)
-
-    # 3️⃣ Генерация видео через DeepAI Video API
-    video_url = generate_video(prompt)
-
-    # Отправляем результат пользователю
-    bot.send_message(message.chat.id, f"Текст для поста:\n{chat_response}")
-    bot.send_message(message.chat.id, f"Баннер:\n{image_url}")
-    bot.send_message(message.chat.id, f"Видео (10-15 сек):\n{video_url}")
-
-# --- Функции генерации через API ---
-def generate_text(prompt):
-    headers = {"Authorization": f"Bearer {CHAT_API_KEY}"}
-    data = {"prompt": prompt, "max_tokens": 150}
-    response = requests.post("https://api.openai.com/v1/completions", headers=headers, json=data)
-    return response.json()["choices"][0]["text"]
-
-def generate_image(prompt):
-    headers = {"api-key": IMAGE_API_KEY}
-    data = {"prompt": prompt}
-    response = requests.post("https://api.deepai.org/api/text2img", headers=headers, data=data)
-    return response.json()["output_url"]
-
-def generate_video(prompt):
-    headers = {"api-key": VIDEO_API_KEY}
-    data = {"text": prompt}
-    response = requests.post("https://api.deepai.org/api/text2video", headers=headers, data=data)
-    return response.json()["output_url"]
-
-# --- Webhook для Render ---
-@app.route('/' + BOT_TOKEN, methods=['POST'])
-def getMessage():
-    json_str = request.stream.read().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "!", 200
-
+# =========================
+# Проверка работы сервера
+# =========================
 @app.route('/')
 def index():
     return "Бот работает!"
 
+# =========================
+# Webhook для Telegram
+# =========================
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+def webhook():
+    try:
+        json_str = request.stream.read().decode("utf-8")
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+    except Exception as e:
+        print(f"Ошибка обработки вебхука: {e}")
+    return "!", 200
+
+# =========================
+# Запуск Flask на Render
+# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
+
 
 
 
