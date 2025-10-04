@@ -1,30 +1,26 @@
-
 import telebot
 import os
 from flask import Flask, request
 
-TOKEN = os.getenv("BOT_TOKEN")  # токен берём из переменной окружения
-
-# Отладка — печатаем токен, чтобы проверить пробелы
-print("TOKEN (raw):", repr(TOKEN))
-
+# Берём токен и сразу убираем пробелы/переводы строки
+TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not TOKEN:
-    raise ValueError("Переменная BOT_TOKEN не найдена! Проверь настройки в Render.")
+    raise ValueError("❌ Ошибка: BOT_TOKEN не найден. Укажи его в Render → Environment Variables.")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# команда /start
+# Команда /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.reply_to(message, "Привет! Я твой ассистент-бот 🤖")
 
-# проверка, что сервер работает
+# Проверка сервера
 @app.route('/')
 def index():
-    return "Бот работает!"
+    return "✅ Бот работает!"
 
-# вебхук
+# Вебхук
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     json_str = request.stream.read().decode("utf-8")
@@ -33,7 +29,10 @@ def getMessage():
     return "!", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+
 
 
 
